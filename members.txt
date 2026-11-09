@@ -1,0 +1,35 @@
+# Artifacts constrained by meguviz-bom, one artifactId per line (group io.github.jichuo1.meguviz).
+# Every line must exist on Maven Central at the BOM version before the BOM itself is published:
+#   python3 tools/bom_tools.py central-status --require-all
+# A published BOM is immutable, so an artifact that joins later needs a new BOM version.
+
+# MeguvizAndroid
+meguviz-android-runtime
+meguviz-android-window
+meguviz-android-lifecycle
+meguviz-android-resources-loader
+
+# MeguvizUI
+meguviz-ui-core
+meguviz-ui-widgets
+meguviz-ui-plan
+meguviz-ui-text
+meguviz-ui-recycler
+meguviz-ui-layouts
+meguviz-ui-prewarm
+meguviz-ui-frame-shared
+meguviz-ui-codegen-api
+meguviz-ui-codegen
+meguviz-ui-ref-bridge
+
+# MeguvizRef
+meguviz-ref-core
+meguviz-ref-android
+meguviz-ref-diagnostics
+
+# MeguvizDrawable
+meguviz-drawable-core
+meguviz-drawable-android
+meguviz-drawable-compose
+meguviz-drawable-meguviz-android
+meguviz-drawable-meguviz-ui
