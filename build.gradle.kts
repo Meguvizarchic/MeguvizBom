@@ -114,10 +114,16 @@ tasks.register("verifyBom") {
 
 // ---- Central bundle -----------------------------------------------------------------------------------------
 
+val checkCentralMembers = tasks.register<Exec>("checkCentralMembers") {
+    group = "publishing"
+    description = "Requires every member at its specified version to exist on Maven Central."
+    commandLine(pythonExecutable, "tools/bom_tools.py", "central-status", "--require-all")
+}
+
 tasks.register<Exec>("centralBundle") {
     group = "publishing"
     description = "Zips the signed BOM in Maven Central layout. Run: ./gradlew -Pmeguviz.sign=true centralBundle"
-    dependsOn("verifyBom")
+    dependsOn("verifyBom", checkCentralMembers)
     doFirst {
         check(signRequested) { "centralBundle requires -Pmeguviz.sign=true" }
     }

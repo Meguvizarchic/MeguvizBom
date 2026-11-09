@@ -10,7 +10,7 @@ BOM 发布到 Maven Central，坐标 `io.github.jichuo1.meguviz:meguviz-bom:<版
 python3 tools/bom_tools.py central-status --require-all
 ```
 
-返回 0 才继续。成员清单变化（加入新桥、移除模块）意味着一个新的 BOM 版本，不能回改已发布的版本。
+返回 0 才继续；`centralBundle` 也会执行同一检查，缺失或无法确认时不会生成上传包。成员清单变化（加入新桥、移除模块）意味着一个新的 BOM 版本，不能回改已发布的版本。
 
 ## 版本号
 
