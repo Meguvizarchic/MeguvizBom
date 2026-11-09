@@ -4,7 +4,7 @@ BOM 发布到 Maven Central，坐标 `io.github.jichuo1.meguviz:meguviz-bom:<版
 
 ## 什么时候发
 
-只在 [`members.txt`](../members.txt) 里的每个制品都以 BOM 版本上了 Central 之后发：
+只在 [`members.txt`](../members.txt) 里的每个制品都以各自指定的版本上了 Central 之后发：
 
 ```sh
 python3 tools/bom_tools.py central-status --require-all
@@ -14,7 +14,9 @@ python3 tools/bom_tools.py central-status --require-all
 
 ## 版本号
 
-`gradle.properties` 里的 `meguviz.version` 是整个批次的版本号，与各库的发布版本一致。BOM 自己不单独定版：批次是 1.2.0，BOM 就是 1.2.0。
+`gradle.properties` 里的 `meguviz.version` 是家族批次版本；成员清单中显式写出的独立版本不受它影响。当前 Hook 的 1.2.0 和 `io.github.jichuo1:lumen-bridge-meguviz-android:1.6.2` 均为待发布坐标，不应将源码配置当成 Central 已发布的证据。
+
+Lumen 桥源码默认使用另一个 group，且当前默认不随 Lumen 发布。准备该桥时必须确认发布配置确实产出清单中的 Central 坐标。该桥本身依赖此 BOM：可先用本地 staging BOM 构建并验证桥，但上传前还须确认 Portal 接受这一发布顺序；不能因暂时无法解析而跳过 `central-status --require-all`。
 
 ## 步骤
 

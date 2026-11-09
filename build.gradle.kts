@@ -12,13 +12,26 @@ version = providers.gradleProperty("meguviz.version").get()
 val members: List<String> = file("members.txt").readLines()
     .map { it.substringBefore('#').trim() }
     .filter { it.isNotEmpty() }
+    .map { member ->
+        val parts = member.split(':')
+        check(parts.size in 1..3) { "invalid member: $member" }
+        val groupId = if (parts.size == 1) bomGroup else parts[0]
+        val artifactId = if (parts.size == 1) parts[0] else parts[1]
+        val memberVersion = if (parts.size == 3) parts[2] else project.version.toString()
+        check(Regex("[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*").matches(groupId) &&
+            Regex("[A-Za-z0-9_][A-Za-z0-9_.-]*").matches(artifactId) &&
+            Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?").matches(memberVersion) &&
+            !memberVersion.endsWith("-SNAPSHOT", ignoreCase = true)) { "invalid member: $member" }
+        "$groupId:$artifactId:$memberVersion"
+    }
 check(members.isNotEmpty()) { "members.txt lists no artifacts" }
-check(members.toSet().size == members.size) { "members.txt lists an artifact twice" }
-check("meguviz-bom" !in members) { "the BOM must not constrain itself" }
+val memberCoordinates = members.map { it.substringBeforeLast(':') }
+check(memberCoordinates.toSet().size == members.size) { "members.txt lists an artifact twice" }
+check("$bomGroup:meguviz-bom" !in memberCoordinates) { "the BOM must not constrain itself" }
 
 dependencies {
     constraints {
-        members.forEach { api("$bomGroup:$it:${project.version}") }
+        members.forEach { api(it) }
     }
 }
 
@@ -35,7 +48,7 @@ publishing {
             from(components["javaPlatform"])
             pom {
                 name.set("Meguviz family BOM")
-                description.set("Aligns the versions of the Meguviz Android, UI, Ref and Drawable artifacts of one release train.")
+                description.set("Aligns the Meguviz family and its optional integration bridges.")
                 url.set("https://github.com/Meguvizarchic/MeguvizBom")
                 licenses {
                     license {

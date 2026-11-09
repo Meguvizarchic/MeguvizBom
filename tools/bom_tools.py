@@ -2,8 +2,8 @@
 """Verification and Maven Central bundling for meguviz-bom. Standard library only (Python 3.9+).
 
   bom_tools.py check --repo build/staging-maven
-      The staged POM and Gradle module metadata must list exactly the artifacts of members.txt, all at the BOM
-      version, with the platform category in the module metadata, no real dependencies, the metadata Maven Central
+      The staged POM and Gradle module metadata must list exactly the artifacts and versions in members.txt,
+      with the platform category in the module metadata, no real dependencies, the metadata Maven Central
       requires and matching checksum files.
   bom_tools.py bundle --repo build/staging-maven --out build/central/<name>.zip [--require-signatures]
       Zips the staged files in Maven Central layout (deterministically) and verifies the result.
@@ -11,7 +11,7 @@
       Checks an upload bundle: layout, checksums, signatures (system gpg), POM fields, and with --check-unpublished
       that the version is not on Central yet (a release cannot be replaced).
   bom_tools.py central-status [--require-all] [--version V]
-      Which members exist on Maven Central at the BOM version. The BOM should be published only when all do.
+      Which members exist on Maven Central at their specified versions. Publish the BOM only when all do.
 
 Scope: this checks the files and the alignment metadata. It cannot check that the namespace is verified on the
 Central Portal or that the signing key is on a key server.
@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,24 @@ def bom_version(root: Path = ROOT) -> str:
     raise ValueError("gradle.properties has no meguviz.version")
 
 
+def member_coordinate(member: str, default_version: str) -> tuple[str, str, str]:
+    parts = member.split(":")
+    if len(parts) == 1:
+        group, artifact, version = GROUP, parts[0], default_version
+    elif len(parts) == 2:
+        group, artifact, version = parts[0], parts[1], default_version
+    elif len(parts) == 3:
+        group, artifact, version = parts
+    else:
+        raise ValueError(f"invalid member: {member}")
+    if (not re.fullmatch(r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*", group)
+            or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", artifact)
+            or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9][A-Za-z0-9.-]*)?", version)
+            or version.upper().endswith("-SNAPSHOT")):
+        raise ValueError(f"invalid member: {member}")
+    return group, artifact, version
+
+
 def read_members(root: Path = ROOT) -> List[str]:
     members = []
     for raw in (root / "members.txt").read_text("utf-8").splitlines():
@@ -56,9 +75,10 @@ def read_members(root: Path = ROOT) -> List[str]:
             members.append(line)
     if not members:
         raise ValueError("members.txt lists no artifacts")
-    if len(set(members)) != len(members):
+    coordinates = [member_coordinate(member, "0.0.0")[:2] for member in members]
+    if len(set(coordinates)) != len(members):
         raise ValueError("members.txt lists an artifact twice")
-    if BOM in members:
+    if (GROUP, BOM) in coordinates:
         raise ValueError("the BOM must not constrain itself")
     return members
 
@@ -97,7 +117,7 @@ def check_pom(data: bytes, version: str, members: List[str]) -> List[str]:
     for dep in root.findall("m:dependencyManagement/m:dependencies/m:dependency", NS):
         managed.add((dep.findtext("m:groupId", namespaces=NS), dep.findtext("m:artifactId", namespaces=NS),
                      dep.findtext("m:version", namespaces=NS)))
-    expected_set = {(GROUP, member, version) for member in members}
+    expected_set = {member_coordinate(member, version) for member in members}
     for item in sorted(expected_set - managed, key=str):
         problems.append(f"POM does not manage {item[0]}:{item[1]}:{item[2]}")
     for item in sorted(managed - expected_set, key=str):
@@ -114,7 +134,7 @@ def check_module(data: bytes, version: str, members: List[str]) -> List[str]:
     variants = document.get("variants", [])
     if not variants:
         problems.append("module metadata has no variants")
-    expected = {(GROUP, member, version) for member in members}
+    expected = {member_coordinate(member, version) for member in members}
     for variant in variants:
         name = variant.get("name")
         if variant.get("attributes", {}).get("org.gradle.category") != "platform":
@@ -270,7 +290,8 @@ def central_status(members: List[str], version: str,
     lookup = head or http_head
     result = {}
     for member in members:
-        status = lookup(f"{CENTRAL}/{GROUP_PATH}/{member}/{version}/{member}-{version}.pom")
+        group, artifact, member_version = member_coordinate(member, version)
+        status = lookup(f"{CENTRAL}/{group.replace('.', '/')}/{artifact}/{member_version}/{artifact}-{member_version}.pom")
         result[member] = "published" if status == 200 else "missing" if status == 404 else f"unknown ({status})"
     return result
 
@@ -322,7 +343,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     for name, state in result.items():
         print(f"{name.ljust(width)}  {state}")
     missing = [name for name, state in result.items() if state != "published"]
-    print(f"{len(result) - len(missing)} of {len(result)} members are on Maven Central at {wanted}")
+    print(f"{len(result) - len(missing)} of {len(result)} members are on Maven Central "
+          f"(family version {wanted}; independent versions as pinned)")
     return 1 if args.require_all and missing else 0
 
 

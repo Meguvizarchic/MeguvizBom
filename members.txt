@@ -1,5 +1,6 @@
-# Artifacts constrained by meguviz-bom, one artifactId per line (group io.github.jichuo1.meguviz).
-# Every line must exist on Maven Central at the BOM version before the BOM itself is published:
+# One member per line: artifactId, groupId:artifactId, or groupId:artifactId:version.
+# Omitted groups default to io.github.jichuo1.meguviz; omitted versions use the BOM version.
+# Every member must exist on Maven Central at its specified version before the BOM is published:
 #   python3 tools/bom_tools.py central-status --require-all
 # A published BOM is immutable, so an artifact that joins later needs a new BOM version.
 
@@ -21,6 +22,8 @@ meguviz-ui-frame-shared
 meguviz-ui-codegen-api
 meguviz-ui-codegen
 meguviz-ui-ref-bridge
+meguviz-ui-android-bridge
+meguviz-ui-lumen-bridge
 
 # MeguvizRef
 meguviz-ref-core
@@ -33,3 +36,16 @@ meguviz-drawable-android
 meguviz-drawable-compose
 meguviz-drawable-meguviz-android
 meguviz-drawable-meguviz-ui
+meguviz-drawable-lumen
+
+# MeguvizHook (separate group, same 1.2.0 release train)
+io.github.jichuo1.meguviz.hook:hook-api
+io.github.jichuo1.meguviz.hook:hook-core
+io.github.jichuo1.meguviz.hook:hook-dsl
+io.github.jichuo1.meguviz.hook:hook-testing
+io.github.jichuo1.meguviz.hook:hook-ref-bridge
+io.github.jichuo1.meguviz.hook:backend-libxposed-101
+io.github.jichuo1.meguviz.hook:backend-libxposed-102
+
+# Lumen's independently versioned bridge (planned Central coordinate, not yet published)
+io.github.jichuo1:lumen-bridge-meguviz-android:1.6.2

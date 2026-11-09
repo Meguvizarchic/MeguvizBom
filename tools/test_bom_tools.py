@@ -15,8 +15,9 @@ MEMBERS = ["meguviz-a", "meguviz-b", "meguviz-c"]
 
 def pom(version=VERSION, members=MEMBERS, extra=None, license_name="Apache", dependencies="", artifact=tools.BOM):
     managed = "".join(
-        f"<dependency><groupId>{tools.GROUP}</groupId><artifactId>{m}</artifactId><version>{version}</version></dependency>"
-        for m in list(members) + list(extra or []))
+        f"<dependency><groupId>{group}</groupId><artifactId>{artifact}</artifactId><version>{member_version}</version></dependency>"
+        for m in list(members) + list(extra or [])
+        for group, artifact, member_version in [tools.member_coordinate(m, version)])
     license_block = f"<licenses><license><name>{license_name}</name><url>https://example.test/l</url></license></licenses>" if license_name else ""
     return (f'<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>'
             f"<groupId>{tools.GROUP}</groupId><artifactId>{artifact}</artifactId><version>{version}</version><packaging>pom</packaging>"
@@ -27,7 +28,8 @@ def pom(version=VERSION, members=MEMBERS, extra=None, license_name="Apache", dep
 
 
 def module(version=VERSION, members=MEMBERS, category="platform", constraint_version=None, dependencies=None):
-    constraints = [{"group": tools.GROUP, "module": m, "version": {"requires": constraint_version or version}} for m in members]
+    constraints = [{"group": group, "module": artifact, "version": {"requires": constraint_version or member_version}}
+                   for m in members for group, artifact, member_version in [tools.member_coordinate(m, version)]]
     variants = []
     for name, usage in (("apiElements", "java-api"), ("runtimeElements", "java-runtime")):
         variant = {"name": name, "attributes": {"org.gradle.category": category, "org.gradle.usage": usage},
@@ -67,6 +69,13 @@ class Case(unittest.TestCase):
 class CheckStaged(Case):
     def test_consistent_repo_passes(self):
         self.assertEqual([], self.problems())
+
+    def test_multiple_groups_and_independent_version(self):
+        members = ["meguviz-a", "io.github.example.hook:hook-api", "io.github.example:lumen-bridge:1.6.2"]
+        self.stage(pom_bytes=pom(members=members), module_bytes=module(members=members))
+        self.assertEqual([], tools.check_staged(self.repo, VERSION, members))
+        wrong = module(members=members).replace(b'1.6.2', VERSION.encode())
+        self.assertTrue(any("lumen-bridge" in p for p in tools.check_module(wrong, VERSION, members)))
 
     def test_member_missing_from_pom(self):
         found = self.problems(pom_bytes=pom(members=MEMBERS[:2]))
@@ -185,12 +194,21 @@ class CentralStatus(unittest.TestCase):
         tools.central_status(["meguviz-a"], VERSION, head=lambda url: seen.append(url) or 200)
         self.assertEqual([f"{tools.CENTRAL}/io/github/jichuo1/meguviz/meguviz-a/{VERSION}/meguviz-a-{VERSION}.pom"], seen)
 
+    def test_url_uses_member_group_and_independent_version(self):
+        seen = []
+        member = "io.github.example:lumen-bridge:1.6.2"
+        tools.central_status([member], VERSION, head=lambda url: seen.append(url) or 200)
+        self.assertEqual([f"{tools.CENTRAL}/io/github/example/lumen-bridge/1.6.2/lumen-bridge-1.6.2.pom"], seen)
+
 
 class Repository(unittest.TestCase):
     def test_members_file_is_clean(self):
         members = tools.read_members()
         self.assertEqual(len(members), len(set(members)))
-        self.assertTrue(all(m.startswith("meguviz-") and m != tools.BOM for m in members), members)
+        coordinates = [tools.member_coordinate(m, VERSION) for m in members]
+        self.assertEqual(len(coordinates), len({(g, a) for g, a, _ in coordinates}))
+        self.assertIn(("io.github.jichuo1.meguviz.hook", "hook-ref-bridge", VERSION), coordinates)
+        self.assertIn(("io.github.jichuo1", "lumen-bridge-meguviz-android", "1.6.2"), coordinates)
 
     def test_version_is_a_release(self):
         version = tools.bom_version()
@@ -203,6 +221,14 @@ class Repository(unittest.TestCase):
             (Path(tmp) / "members.txt").write_text("meguviz-a\nmeguviz-a\n")
             with self.assertRaises(ValueError):
                 tools.read_members(Path(tmp))
+            (Path(tmp) / "members.txt").write_text("meguviz-a\nio.github.jichuo1.meguviz:meguviz-a:1.0.0\n")
+            with self.assertRaises(ValueError):
+                tools.read_members(Path(tmp))
+
+    def test_invalid_member_coordinates_are_rejected(self):
+        for member in ("bad/group:artifact", "group:artifact:1.0.0-SNAPSHOT", "group::1.0.0", "a:b:c:d"):
+            with self.subTest(member=member), self.assertRaises(ValueError):
+                tools.member_coordinate(member, VERSION)
 
 
 if __name__ == "__main__":

@@ -30,8 +30,9 @@ val control = resolvableUsingApi("bomControl")
 dependencies {
     add(aligned.name, platform("$bomGroup:meguviz-bom:$bomVersion"))
     members.forEach {
-        add(aligned.name, "$bomGroup:$it") // deliberately no version
-        add(control.name, "$bomGroup:$it") // the same without the BOM: must not resolve
+        val coordinate = it.substringBeforeLast(':')
+        add(aligned.name, coordinate) // deliberately no version
+        add(control.name, coordinate) // the same without the BOM: must not resolve
     }
 }
 
@@ -42,12 +43,13 @@ val writeStubs = tasks.register("writeStubs") {
     doLast {
         val root = out.get().asFile
         root.deleteRecursively()
-        artifacts.forEach { artifact ->
-            val directory = File(root, bomGroup.replace('.', '/') + "/$artifact/$bomVersion").apply { mkdirs() }
-            File(directory, "$artifact-$bomVersion.pom").writeText(
+        artifacts.forEach { member ->
+            val (groupId, artifact, version) = member.split(':')
+            val directory = File(root, groupId.replace('.', '/') + "/$artifact/$version").apply { mkdirs() }
+            File(directory, "$artifact-$version.pom").writeText(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                     "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>" +
-                    "<groupId>$bomGroup</groupId><artifactId>$artifact</artifactId><version>$bomVersion</version>" +
+                    "<groupId>$groupId</groupId><artifactId>$artifact</artifactId><version>$version</version>" +
                     "<packaging>pom</packaging></project>\n"
             )
         }
@@ -63,15 +65,20 @@ tasks.register("verifyAlignment") {
         val unresolved = graph.allDependencies.filterIsInstance<UnresolvedDependencyResult>()
         check(unresolved.isEmpty()) { "unresolved with the BOM: " + unresolved.map { it.requested.displayName } }
         val versions = graph.allComponents.mapNotNull { it.moduleVersion }
-            .filter { it.group == bomGroup }.associate { it.name to it.version }
-        check(versions["meguviz-bom"] == bomVersion) { "the BOM itself did not resolve as $bomVersion: ${versions["meguviz-bom"]}" }
-        val wrong = members.filter { versions[it] != bomVersion }
-        check(wrong.isEmpty()) { "the BOM did not align to $bomVersion: $wrong" }
+            .associate { "${it.group}:${it.name}" to it.version }
+        val bomCoordinate = "$bomGroup:meguviz-bom"
+        check(versions[bomCoordinate] == bomVersion) { "the BOM itself did not resolve as $bomVersion: ${versions[bomCoordinate]}" }
+        val wrong = members.filter { versions[it.substringBeforeLast(':')] != it.substringAfterLast(':') }
+        check(wrong.isEmpty()) { "the BOM did not align its members: $wrong" }
 
         val withoutBom = control.incoming.resolutionResult.allDependencies
-            .filterIsInstance<UnresolvedDependencyResult>().map { (it.requested as ModuleComponentSelector).module }.toSet()
-        check(withoutBom == members.toSet()) {
-            "without the BOM these members still resolved, so the check proves nothing: ${members.toSet() - withoutBom}"
+            .filterIsInstance<UnresolvedDependencyResult>().map {
+                val requested = it.requested as ModuleComponentSelector
+                "${requested.group}:${requested.module}"
+            }.toSet()
+        val memberCoordinates = members.map { it.substringBeforeLast(':') }.toSet()
+        check(withoutBom == memberCoordinates) {
+            "without the BOM these members still resolved, so the check proves nothing: ${memberCoordinates - withoutBom}"
         }
         println("BOM $bomVersion OK: ${members.size} members aligned, ${withoutBom.size} unresolved without it")
     }
